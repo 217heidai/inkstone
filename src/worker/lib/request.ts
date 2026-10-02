@@ -190,6 +190,6 @@ export function clampInt(
 
 export function assertContentSize(content: string): void {
   if (new TextEncoder().encode(content).byteLength > LIMITS.contentMaxBytes) {
-    throw ApiError.tooLarge('Note content exceeds the 2 MB limit')
+    throw ApiError.tooLarge(`Note content exceeds the ${LIMITS.contentMaxBytes / 1_000_000} MB limit`)
   }
 }
