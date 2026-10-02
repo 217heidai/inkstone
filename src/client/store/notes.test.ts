@@ -23,6 +23,7 @@ vi.mock('../lib/api', async () => {
   return { ...actual, api: { ...actual.api, notes: { get: mocks.get, patch: mocks.patch, create: mocks.create } } }
 })
 import { useNotes } from './notes'
+import { ApiError } from '../lib/api'
 
 const note: Note = {
   id: '01m1r8923zajxnw9y0dhs6sy8j', title: 'Example', excerpt: 'old', content: 'old',
@@ -55,4 +56,17 @@ it('keeps the loaded content revision until remote content arrives', async () =>
   resolve(remote)
   await vi.waitFor(() => expect(useNotes.getState().contents[note.id]).toBe('remote edit'))
   expect(useNotes.getState().notes[note.id].rev).toBe(2)
+})
+
+it('saves conflicting local edits as a copy without retrying over the server note', async () => {
+  useNotes.getState().editContent(note.id, 'offline local edit')
+  const remote = { ...note, rev: 3, content: 'remote important edit' }
+  mocks.patch.mockRejectedValueOnce(new ApiError(409, 'conflict', 'conflict', { server: remote }))
+  mocks.create.mockImplementation(async (input) => ({ ...note, ...input, rev: 1 }))
+  await useNotes.getState().flush({ immediate: true })
+  expect(mocks.patch).toHaveBeenCalledTimes(1)
+  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ content: 'offline local edit' }))
+  expect(useNotes.getState().contents[note.id]).toBe('remote important edit')
+  expect(useNotes.getState().notes[note.id].rev).toBe(3)
+  expect(mocks.queue).toHaveLength(0)
 })
