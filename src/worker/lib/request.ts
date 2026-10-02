@@ -12,6 +12,7 @@ export const JSON_BODY_LIMITS = {
 
 export const FORM_BODY_LIMITS = {
   authorization: 16 * 1024,
+  oauthToken: 16 * 1024,
   attachment: LIMITS.attachmentMaxBytes + 512 * 1024,
   import: LIMITS.importUploadMaxBytes + 1024 * 1024,
 } as const
