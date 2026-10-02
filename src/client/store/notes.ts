@@ -380,6 +380,10 @@ export const useNotes = create<NotesState>((set, get) => ({
             return { notes, folders, tags, cursor: payload.cursor };
         });
         reconcileFolderUi(get().folders);
+        for (const remote of payload.notes) {
+            if (hasOwnContent(get().contents, remote.id) && !dirty.has(remote.id))
+                revalidateNote(remote.id, remote.rev, set, get);
+        }
         const candidates = payload.full ? [...previousNoteIds, ...deletionIds] : deletionIds;
         for (const id of new Set(candidates)) {
             if (get().notes[id])
@@ -445,6 +449,7 @@ export const useNotes = create<NotesState>((set, get) => ({
                 let foreignPending = false;
                 let visibleContent = cached.content;
                 let visibleTitle: string | undefined;
+                let visibleRev = cached.rev;
                 if (cached.writeId) {
                     const outbox = await localDb.getOutbox();
                     currentSummary = get().notes[id];
@@ -465,6 +470,7 @@ export const useNotes = create<NotesState>((set, get) => ({
 
 
                         visibleContent = existingContent as string;
+                        visibleRev = existingRev as number;
                         visibleTitle = typeof existingTitle === 'string' ? existingTitle : undefined;
                         if (existing.clientId === CLIENT_ID) {
                             inheritedOutboxWrites.delete(id);
@@ -542,8 +548,10 @@ export const useNotes = create<NotesState>((set, get) => ({
                     }
                 }
                 set((s) => ({
-                    notes: visibleTitle !== undefined && s.notes[id]?.title !== visibleTitle
-                        ? { ...s.notes, [id]: { ...s.notes[id]!, title: visibleTitle } }
+                    notes: s.notes[id] && (s.notes[id]!.rev !== visibleRev ||
+                        (visibleTitle !== undefined && s.notes[id]!.title !== visibleTitle))
+                        ? { ...s.notes, [id]: { ...s.notes[id]!, rev: visibleRev,
+                            ...(visibleTitle !== undefined ? { title: visibleTitle } : {}) } }
                         : s.notes,
                     contents: { ...s.contents, [id]: visibleContent },
                     ...(restoredPending
@@ -1308,7 +1316,7 @@ function stageNoteTextWrite(id: string, content: string, title: string | undefin
     const payload = {
         content,
         contentDirty,
-        rev: summary.rev,
+        rev: previousDirty?.rev ?? summary.rev,
         ...(title !== undefined ? { title } : {}),
     };
     const persisted = localDb.enqueueOutbox({
@@ -1321,7 +1329,7 @@ function stageNoteTextWrite(id: string, content: string, title: string | undefin
         attempts: 0,
         createdAt: Date.now(),
     }).then(() => true, () => false);
-    dirty.set(id, { content, contentDirty, ...(title !== undefined ? { title } : {}), rev: summary.rev, writeId, queueId, dependsOnWriteId, updatedAt, persisted });
+    dirty.set(id, { content, contentDirty, ...(title !== undefined ? { title } : {}), rev: payload.rev, writeId, queueId, dependsOnWriteId, updatedAt, persisted });
     const titleChanged = title !== undefined && summary.title !== title;
     set((current) => ({
         notes: titleChanged
@@ -1339,7 +1347,7 @@ function stageNoteTextWrite(id: string, content: string, title: string | undefin
         content,
         contentDirty,
         ...(title !== undefined ? { pendingTitle: title } : {}),
-        rev: summary.rev,
+        rev: payload.rev,
         updatedAt,
         writeId,
     });
@@ -1776,6 +1784,8 @@ function discardNoteRuntimeState(id: string, tombstoneCursor?: number | null): v
 }
 function adoptNote(note: Note | NoteSummary, set: SetNotesState, get: () => NotesState): void {
     if (purgedNoteIds.has(note.id))
+        return;
+    if ((get().notes[note.id]?.rev ?? 0) > note.rev)
         return;
     const hasContent = 'content' in note;
     const incomingSummary = stripContent(note);
@@ -2476,6 +2486,10 @@ function reconcileNotes(current: Record<string, NoteSummary>, incoming: NoteSumm
     return next;
 }
 function reconcileRemoteSummary(current: NoteSummary | undefined, incoming: NoteSummary): NoteSummary {
+    // Loaded content keeps its revision until the full note arrives.
+    if (current && incoming.rev > current.rev && !dirty.has(incoming.id) &&
+        hasOwnContent(useNotes.getState().contents, incoming.id))
+        return applyPendingNoteMutations(incoming.id, current);
     const base = current && current.rev > incoming.rev
         ? current
         : mergeDirtySummary(current, incoming);
