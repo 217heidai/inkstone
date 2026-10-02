@@ -1,3 +1,4 @@
+import { APP_SHORTCUTS } from '../../lib/shortcuts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Archive, ArrowDown, ArrowUp, ChevronRight, Clock, CornerUpLeft, FilePlus2, FileText, FolderClosed, FolderInput, FolderOpen, FolderPlus, Hash, Inbox, LogOut, Moon, MoreHorizontal, Palette, PanelLeft, PanelLeftClose, Pencil, Plus, Settings, Star, Sun, Trash2, Waypoints, } from 'lucide-react';
 import { LIMITS } from '@shared/constants';
@@ -84,7 +85,7 @@ function SidebarRail({ onExpand }: {
         <RailButton label={t("navigation.favorites")} active={view === 'starred'} icon={<Star size={16}/>} onClick={() => openView('starred')}/>
         <RailButton label={t("navigation.trash")} active={view === 'trash'} icon={<Trash2 size={16}/>} onClick={() => openView('trash')}/>
         <div className="my-1 h-px w-6 bg-[var(--border-subtle)]"/>
-        <RailButton label={t("common.new_note")} combo="mod+n" accent icon={<FilePlus2 size={16}/>} onClick={() => void createContextualNote()}/>
+        <RailButton label={t("common.new_note")} combo={APP_SHORTCUTS.newNote} accent icon={<FilePlus2 size={16}/>} onClick={() => void createContextualNote()}/>
       </div>
 
       <span className="flex-1"/>
@@ -129,14 +130,13 @@ function SidebarAccount({ rail = false }: {
             id: 'settings',
             label: t("common.settings"),
             icon: <SettingsIcon size={13} showDot={user.role === 'owner' && updateAvailable}/>,
-            combo: 'mod+,',
+            combo: APP_SHORTCUTS.settings,
             onSelect: () => openPanel('settings'),
         },
         {
             id: 'graph',
             label: t("common.graph"),
             icon: <Waypoints size={13}/>,
-            combo: 'mod+shift+g',
             onSelect: () => openPanel('graph'),
         },
         {

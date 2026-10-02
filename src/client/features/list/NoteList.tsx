@@ -1,3 +1,4 @@
+import { APP_SHORTCUTS, NOTE_LIST_SHORTCUTS } from '../../lib/shortcuts';
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Archive, ArrowDownWideNarrow, CheckSquare2, Columns2, Copy, FileCode, FileDown, FileText, FolderInput, Link2, MoreHorizontal, Pin, PinOff, PanelLeft, Plus, RotateCcw, Search, Star, StarOff, Trash2, X, } from 'lucide-react';
 import type { NoteSummary, SortKey, ViewKind } from '@shared/types';
@@ -6,7 +7,7 @@ import { groupLabel } from '../../lib/time';
 import { useNow } from '../../lib/hooks';
 import { fuzzyFilter, splitByRanges } from '../../lib/fuzzy';
 import { useBreakpoint } from '../../lib/hooks';
-import { prettyCombo } from '../../lib/hotkeys';
+import { matches, prettyCombo } from '../../lib/hotkeys';
 import { exportNoteAsHtml, exportNoteAsMarkdown, exportNoteAsPdf } from '../../lib/export-note';
 import { IconButton, Logo } from '../../components/primitives';
 import { Menu, Tooltip, confirm, useContextMenu, type MenuItem } from '../../components/overlay';
@@ -122,6 +123,25 @@ export function NoteList() {
             ?.scrollIntoView({ block: 'nearest' });
     }, [activeNoteId, renderLimit, view, folderId, tag]);
     const onKeyDown = (event: React.KeyboardEvent) => {
+        if (event.target !== event.currentTarget || event.nativeEvent.isComposing)
+            return;
+        if (matches(event.nativeEvent, NOTE_LIST_SHORTCUTS.delete) && view !== 'trash') {
+            event.preventDefault();
+            if (event.repeat) return;
+            const ui = useUi.getState();
+            const ids = ui.selectedIds.length ? ui.selectedIds : activeNoteId ? [activeNoteId] : [];
+            const targets = ids.filter((id) => filteredIds.includes(id));
+            void (async () => {
+                if (targets.length > 1 && !await confirm({
+                    title: t('notes.move_value0_notes_to_trash', { value0: targets.length }),
+                    description: t('notes.restore_it_from_trash_at_any_time'),
+                    confirmLabel: t('common.move_to_trash'), tone: 'danger',
+                })) return;
+                for (const id of targets) await useNotes.getState().deleteNote(id);
+            })();
+            return;
+        }
+        if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
         if (event.key === 'Escape') {
             useUi.getState().setSelected(activeNoteId ? [activeNoteId] : []);
             return;
@@ -202,7 +222,7 @@ export function NoteList() {
                 <ArrowDownWideNarrow size={14}/>
               </IconButton>
             </Tooltip>
-            {view !== 'trash' && view !== 'archived' && (<Tooltip label={t("common.new_note")} combo="mod+n">
+            {view !== 'trash' && view !== 'archived' && (<Tooltip label={t("common.new_note")} combo={APP_SHORTCUTS.newNote}>
                 <IconButton label={t("common.new_note")} size="sm" onClick={() => void createContextualNote()}>
                   <Plus size={15}/>
                 </IconButton>
@@ -235,7 +255,7 @@ export function NoteList() {
               <ArrowDownWideNarrow size={17}/>
             </IconButton>
           </Tooltip>
-          {view !== 'trash' && view !== 'archived' && (<Tooltip label={t("common.new_note")} combo="mod+n">
+          {view !== 'trash' && view !== 'archived' && (<Tooltip label={t("common.new_note")} combo={APP_SHORTCUTS.newNote}>
               <IconButton label={t("common.new_note")} size="sm" className="mobile-library-compose" onClick={() => void createContextualNote()}>
                 <Plus size={19}/>
               </IconButton>
@@ -247,7 +267,7 @@ export function NoteList() {
         {view === 'trash' && notes.length > 0 && (<button type="button" disabled={emptyingTrash} aria-busy={emptyingTrash} onClick={() => void emptyTrash()} className="mt-2 w-full rounded-[var(--r-md)] border border-[var(--border-subtle)] py-1.5 text-[11.5px] text-[var(--text-tertiary)] transition-colors hover:border-[var(--danger)] hover:text-[var(--danger)] disabled:pointer-events-none disabled:opacity-50">{t("notes.empty_trash")}{notes.length}{t("notes.notes_93aeb9")}</button>)}
       </header>
 
-      <div key={`${view}:${folderId ?? ''}:${tag ?? ''}`} ref={listRef} role="listbox" aria-label={title} aria-multiselectable="true" aria-activedescendant={activeNoteId && renderedIds.has(activeNoteId) ? `note-option-${activeNoteId}` : undefined} tabIndex={0} onKeyDown={onKeyDown} className="anim-view-content min-h-0 flex-1 overflow-y-auto px-2 pb-4 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--accent)]">
+      <div key={`${view}:${folderId ?? ''}:${tag ?? ''}`} ref={listRef} data-note-list role="listbox" aria-label={title} aria-multiselectable="true" aria-activedescendant={activeNoteId && renderedIds.has(activeNoteId) ? `note-option-${activeNoteId}` : undefined} tabIndex={0} onKeyDown={onKeyDown} className="anim-view-content min-h-0 flex-1 overflow-y-auto px-2 pb-4 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--accent)]">
         {!hydrated && loading ? (<NoteListSkeleton />) : filtered.length === 0 ? (<ListEmpty view={view} filtering={Boolean(filter)}/>) : (groups.map((group) => (<div key={group.key} role="group" aria-label={group.label ?? title}>
               {group.label && (<div className="px-2 pt-3 pb-1 text-[10.5px] font-semibold tracking-[0.06em] text-[var(--text-quaternary)]">
                   {group.label}
@@ -398,7 +418,7 @@ const NoteRow = memo(function NoteRow({ note, highlight, density, tagColors, pos
                 id: 'star',
                 label: note.isStarred ? t("common.remove_from_favorites") : t("navigation.favorites"),
                 icon: note.isStarred ? <StarOff size={13}/> : <Star size={13}/>,
-                combo: 'mod+d',
+                combo: active ? APP_SHORTCUTS.star : undefined,
                 onSelect: () => void patchNote(note.id, { isStarred: !note.isStarred }),
             },
             { id: 'duplicate', label: t("notes.create_a_copy"), icon: <Copy size={13}/>, onSelect: () => void duplicateNote(note.id) },
@@ -605,16 +625,16 @@ function ListEmpty({ view, filtering }: {
 }) {
     const shortcut = (combo: string) => prettyCombo(combo).join('+');
     if (filtering) {
-        return <Empty art="search" title={t("notes.no_matching_notes")} description={t("notes.try_another_search_or_press_shortcut_to_search_everywhere", { shortcut: shortcut('mod+k') })}/>;
+        return <Empty art="search" title={t("notes.no_matching_notes")} description={t("notes.try_another_search_or_press_shortcut_to_search_everywhere", { shortcut: shortcut(APP_SHORTCUTS.search) })}/>;
     }
     const config: Record<string, {
         art: 'notes' | 'starred' | 'trash' | 'archive' | 'folder' | 'tag';
         title: string;
         desc: string;
     }> = {
-        all: { art: 'notes', title: t("notes.no_notes_yet"), desc: t("notes.press_shortcut_or_the_plus_button_to_write_your_first_note", { shortcut: shortcut('mod+n') }) },
+        all: { art: 'notes', title: t("notes.no_notes_yet"), desc: t("notes.press_shortcut_or_the_plus_button_to_write_your_first_note", { shortcut: shortcut(APP_SHORTCUTS.newNote) }) },
         recent: { art: 'notes', title: t("notes.nothing_has_been_edited_recently"), desc: t("notes.write_something_and_it_will_appear_here") },
-        starred: { art: 'starred', title: t("notes.no_favorites_yet"), desc: t("notes.right_click_a_note_or_press_shortcut_to_favorite_it", { shortcut: shortcut('mod+d') }) },
+        starred: { art: 'starred', title: t("notes.no_favorites_yet"), desc: t("notes.right_click_a_note_or_press_shortcut_to_favorite_it", { shortcut: shortcut(APP_SHORTCUTS.star) }) },
         unfiled: { art: 'folder', title: t("notes.every_note_is_filed"), desc: t("notes.everything_is_neatly_organized") },
         archived: { art: 'archive', title: t("notes.archive_is_empty"), desc: t("notes.keep_notes_here_when_you_want_them_out_of_the_way_but_not_deleted") },
         trash: { art: 'trash', title: t("notes.trash_is_empty"), desc: t("notes.deleted_notes_remain_until_you_restore_or_clear_them") },
