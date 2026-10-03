@@ -6,9 +6,8 @@ import { useUi } from '../../store/ui'
 import { t } from '../../lib/i18n'
 
 export function SearchButton({ variant = 'row' }: { variant?: 'row' | 'icon' | 'mobile' }) {
-  const openPanel = useUi((state) => state.openPanel)
+  const open = useUi((state) => state.openSearchList)
   const label = t('shell.search_all_notes')
-  const open = () => openPanel('search')
 
   if (variant === 'icon') {
     return (

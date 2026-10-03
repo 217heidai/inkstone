@@ -1,5 +1,9 @@
 import type { MessageKey } from './en-US';
 export const ZH_CN_MESSAGES = {
+    "navigation.note_views": "笔记视图",
+    "navigation.close_list": "收起笔记列表",
+    "navigation.searching": "正在搜索…",
+    "navigation.local_search_only": "搜索暂不可用，当前显示本地匹配结果。",
     "mobile.account": "我的",
     "mobile.view": "查看",
     "mobile.menu": "菜单",

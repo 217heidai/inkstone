@@ -32,6 +32,7 @@ interface NotesState {
     openNote: (id: string, options?: {
         pane?: WorkspacePane;
         activate?: boolean;
+        revealOnMobile?: boolean;
     }) => Promise<void>;
     editTitle: (id: string, title: string) => void;
     editContent: (id: string, content: string) => void;
@@ -184,7 +185,7 @@ export const useNotes = create<NotesState>((set, get) => ({
                     });
                     const initialId = pickInitialNoteId(get().notes, get().folders);
                     if (initialId)
-                        await get().openNote(initialId);
+                        await get().openNote(initialId, { revealOnMobile: false });
                 }
                 let pullError: unknown;
                 try {
@@ -217,7 +218,7 @@ export const useNotes = create<NotesState>((set, get) => ({
                     (activeId && notes[activeId] ? activeId : pickInitialNoteId(notes, state.folders));
                 if (targetId) {
                     if (activeId !== targetId || !hasOwnContent(state.contents, targetId)) {
-                        await get().openNote(targetId, { pane: activePane });
+                        await get().openNote(targetId, { pane: activePane, revealOnMobile: false });
                     }
                     else {
                         revalidateNote(targetId, notes[targetId]!.rev, set, get);
@@ -407,7 +408,7 @@ export const useNotes = create<NotesState>((set, get) => ({
         if (!summary)
             return;
         if (hasOwnContent(state.contents, id)) {
-            useUi.getState().setWorkspaceNote(targetPane, id, activate);
+            useUi.getState().setWorkspaceNote(targetPane, id, activate, options?.revealOnMobile);
             revalidateNote(id, summary.rev, set, get);
             return;
         }
@@ -434,7 +435,7 @@ export const useNotes = create<NotesState>((set, get) => ({
                 (noteRequestEpochs.get(id) ?? 0) !== requestEpoch || !get().notes[id])
                 return;
             selected = true;
-            useUi.getState().setWorkspaceNote(targetPane, id, activate);
+            useUi.getState().setWorkspaceNote(targetPane, id, activate, options?.revealOnMobile);
         };
         const feedbackTimer = window.setTimeout(selectTarget, NOTE_SWITCH_FEEDBACK_DELAY_MS);
         try {

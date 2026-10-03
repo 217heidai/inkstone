@@ -48,7 +48,7 @@ export function AppShell() {
         const match = /^\/n\/([0-9a-hjkmnp-tv-z]{26})\/?$/.exec(location.pathname);
         if (!match)
             return;
-        useUi.getState().openView('all');
+        useUi.getState().openExplorer();
         void openNote(match[1]!);
     }, [hydrated, loading, openNote]);
     useEffect(() => {
@@ -237,7 +237,7 @@ function useGlobalHotkeys(): void {
                 group: () => t("shell.global"),
                 allowInInput: true,
                 allowInOverlay: true,
-                handler: () => ui().togglePanel('search'),
+                handler: () => ui().openSearchList(),
             },
             {
                 id: 'settings',

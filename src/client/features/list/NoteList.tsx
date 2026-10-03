@@ -1,10 +1,11 @@
 import { APP_SHORTCUTS, NOTE_LIST_SHORTCUTS } from '../../lib/shortcuts';
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Archive, ArrowDownWideNarrow, CheckSquare2, Columns2, Copy, FileCode, FileDown, FileText, FolderInput, Link2, MoreHorizontal, Pin, PinOff, PanelLeft, Plus, RotateCcw, Search, Star, StarOff, Trash2, X, } from 'lucide-react';
-import type { NoteSummary, SortKey, ViewKind } from '@shared/types';
+import type { NoteSummary, SearchHit, SortKey, ViewKind } from '@shared/types';
 import { cn } from '../../lib/cn';
 import { groupLabel } from '../../lib/time';
-import { useNow } from '../../lib/hooks';
+import { useDebounced, useNow } from '../../lib/hooks';
+import { api } from '../../lib/api';
 import { fuzzyFilter, splitByRanges } from '../../lib/fuzzy';
 import { useBreakpoint } from '../../lib/hooks';
 import { matches, prettyCombo } from '../../lib/hotkeys';
@@ -38,6 +39,8 @@ export function NoteList() {
     const locale = useLocale();
     const breakpoint = useBreakpoint();
     const view = useUi((s) => s.view);
+    const searchList = useUi((s) => s.searchList);
+    const searchRequest = useUi((s) => s.searchRequest);
     const folderId = useUi((s) => s.folderId);
     const tag = useUi((s) => s.tag);
     const sort = useUi((s) => s.sort);
@@ -47,6 +50,8 @@ export function NoteList() {
     const activeNoteId = useUi((s) => s.activeNoteId);
     const toggleNavDrawer = useUi((s) => s.toggleNavDrawer);
     const notes = useVisibleNotes();
+    const allNotes = useNotes((s) => s.notes);
+    const contents = useNotes((s) => s.contents);
     const folders = useNotes((s) => s.folders);
     const tags = useNotes((s) => s.tags);
     const loading = useNotes((s) => s.loading);
@@ -54,7 +59,10 @@ export function NoteList() {
     const openNote = useNotes((s) => s.openNote);
     const { emptyTrash, emptyingTrash } = useEmptyTrash();
     const [filter, setFilter] = useState('');
-    const deferredFilter = useDeferredValue(breakpoint === 'mobile' ? filter : '');
+    const deferredFilter = useDeferredValue(filter);
+    const debouncedFilter = useDebounced(filter.trim(), 180);
+    const filterRef = useRef<HTMLInputElement>(null);
+    const [remote, setRemote] = useState<{ query: string; results: SearchHit[]; failed?: boolean } | null>(null);
     const [sortMenuOpen, setSortMenuOpen] = useState(false);
     const sortButtonRef = useRef<HTMLButtonElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
@@ -63,22 +71,47 @@ export function NoteList() {
     const now = useNow();
     const tagColors = useMemo(() => new Map((tags ?? []).map((item) => [item.name, item.color])), [tags]);
 
-    useEffect(() => setFilter(''), [view, folderId, tag, breakpoint]);
+    useEffect(() => setFilter(''), [view, folderId, tag, searchList, breakpoint]);
+    useEffect(() => {
+        if (searchList) filterRef.current?.focus();
+    }, [searchList, searchRequest]);
+    useEffect(() => {
+        if (!searchList || !debouncedFilter) {
+            setRemote(null);
+            return;
+        }
+        const controller = new AbortController();
+        api.search(debouncedFilter, 100, controller.signal).then((response) => {
+            if (!controller.signal.aborted) setRemote({ query: debouncedFilter, results: response.results });
+        }).catch(() => {
+            if (!controller.signal.aborted) setRemote({ query: debouncedFilter, results: [], failed: true });
+        });
+        return () => controller.abort();
+    }, [searchList, debouncedFilter]);
     const title = useMemo(() => {
+        if (searchList) return t('shell.search_all_notes');
         if (view === 'folder')
             return (folderId ? folderPathLabel(folders, folderId) : '') || t("navigation.folder");
         if (view === 'tag')
             return `#${tag ?? ''}`;
         return t(VIEW_MESSAGE_KEYS[view]);
-    }, [view, folderId, tag, folders, locale]);
+    }, [view, folderId, tag, folders, locale, searchList]);
     const filtered = useMemo(() => {
         if (!deferredFilter.trim())
             return notes.map((note) => ({ note, ranges: EMPTY_HIGHLIGHT }));
-        return fuzzyFilter(notes, deferredFilter, (n) => `${n.title} ${n.excerpt}`, 200).map(({ item, match }) => ({
+        const local = fuzzyFilter(notes, deferredFilter, (n) => `${n.title} ${searchList ? contents[n.id] ?? n.excerpt : n.excerpt} ${n.tags.join(' ')}`, 200).map(({ item, match }) => ({
             note: item,
             ranges: match.ranges.filter(([s]) => s < item.title.length),
         }));
-    }, [notes, deferredFilter]);
+        if (!searchList || remote?.query !== deferredFilter.trim()) return local;
+        const seen = new Set(local.map(({ note }) => note.id));
+        return [...local, ...remote.results.flatMap((hit) => {
+            const note = allNotes[hit.note.id] ?? hit.note;
+            if (seen.has(note.id) || note.deletedAt) return [];
+            seen.add(note.id);
+            return [{ note, ranges: EMPTY_HIGHLIGHT }];
+        })];
+    }, [notes, deferredFilter, searchList, remote, allNotes, contents]);
     const filteredIds = useMemo(() => filtered.map((item) => item.note.id), [filtered]);
     const filteredPositions = useMemo(() => new Map(filteredIds.map((id, index) => [id, index + 1])), [filteredIds]);
     const filteredIdsRef = useRef(filteredIds);
@@ -227,13 +260,16 @@ export function NoteList() {
                   <Plus size={15}/>
                 </IconButton>
               </Tooltip>)}
+            <Tooltip label={t('navigation.close_list')} combo={APP_SHORTCUTS.toggleList}>
+              <IconButton label={t('navigation.close_list')} size="sm" onClick={() => useUi.getState().toggleList()}><X size={14}/></IconButton>
+            </Tooltip>
           </div>
         </div>}
 
-        {breakpoint === 'mobile' && <div className="mobile-library-toolbar">
-          <div className="relative mobile-note-search">
+        {(breakpoint === 'mobile' || searchList) && <div className={breakpoint === 'mobile' ? 'mobile-library-toolbar' : undefined}>
+          <div className={cn('relative', breakpoint === 'mobile' && 'mobile-note-search')}>
             <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[var(--text-quaternary)]"/>
-            <input aria-label={t("notes.filter_in_this_view")} value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => {
+            <input ref={filterRef} aria-label={searchList ? t('shell.search_all_notes') : t("notes.filter_in_this_view")} value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => {
               if (e.key === 'Escape')
                   setFilter('');
               if (e.key === 'ArrowDown') {
@@ -243,14 +279,14 @@ export function NoteList() {
                       void openNote(first);
                   listRef.current?.focus();
               }
-          }} placeholder={t("notes.filter_in_this_view")} className={cn('h-10 w-full rounded-[var(--r-md)] border border-transparent bg-[var(--bg-inset)] md:h-[30px]', 'pr-9 pl-8 text-[12.5px] text-[var(--text-primary)] placeholder:text-[var(--text-quaternary)] md:pr-7 md:pl-7', 'transition-[border-color,box-shadow] duration-[var(--dur-fast)]', 'focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_var(--accent-ring)] focus:outline-none')}/>
+          }} placeholder={searchList ? t('shell.search_all_notes') : t("notes.filter_in_this_view")} className={cn('h-10 w-full rounded-[var(--r-md)] border border-transparent bg-[var(--bg-inset)] md:h-[30px]', 'pr-9 pl-8 text-[12.5px] text-[var(--text-primary)] placeholder:text-[var(--text-quaternary)] md:pr-7 md:pl-7', 'transition-[border-color,box-shadow] duration-[var(--dur-fast)]', 'focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_var(--accent-ring)] focus:outline-none')}/>
             {filter && (<Tooltip label={t("notes.clear_filters")} side="left">
                 <button type="button" onClick={() => setFilter('')} aria-label={t("notes.clear_filters")} className="absolute top-1/2 right-1 flex size-8 -translate-y-1/2 items-center justify-center rounded text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]">
                   <X size={12}/>
                 </button>
               </Tooltip>)}
           </div>
-          <Tooltip label={t("notes.sort_and_display")}>
+          {breakpoint === 'mobile' && <><Tooltip label={t("notes.sort_and_display")}>
             <IconButton label={t("notes.sort_and_display")} size="sm" className="mobile-library-sort" ref={sortButtonRef} onClick={() => setSortMenuOpen(true)}>
               <ArrowDownWideNarrow size={17}/>
             </IconButton>
@@ -260,7 +296,10 @@ export function NoteList() {
                 <Plus size={19}/>
               </IconButton>
             </Tooltip>)}
+          </>}
         </div>}
+
+        {searchList && filter.trim() && (remote?.query !== filter.trim() || remote.failed) && <p role="status" className="mt-2 text-[11.5px] text-[var(--text-tertiary)]">{remote?.query === filter.trim() && remote.failed ? t('navigation.local_search_only') : t('navigation.searching')}</p>}
 
         {breakpoint === 'mobile' && <MobileLibraryFilters />}
 
