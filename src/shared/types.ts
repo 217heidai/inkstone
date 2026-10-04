@@ -111,6 +111,7 @@ export interface EditorSettings {
   focusMode: boolean
   spellcheck: boolean
   showToolbar: boolean
+  livePreview: boolean
   tabSize: number
   autoSaveDelay: number
 }

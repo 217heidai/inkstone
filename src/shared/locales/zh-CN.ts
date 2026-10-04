@@ -1046,6 +1046,7 @@ export const ZH_CN_MESSAGES = {
     "time.yesterday": "昨天",
       "workspace.reading_mode": "阅读模式",
   "workspace.live_preview": "即时渲染",
+  "workspace.editing_mode": "编辑模式",
   "workspace.live_preview_hint": "点击内容编辑，移开光标查看排版；Ctrl / ⌘ + 点击打开链接",
   "workspace.a_snapshot_is_saved_every_few_minutes_or_after_larger_edits": "每隔几分钟或改动较大时，会自动留一份存档",
     "workspace.autosave_for_value0": "「{value0}」的自动存档",

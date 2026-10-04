@@ -1045,6 +1045,7 @@ export const EN_US_MESSAGES = {
     "time.yesterday": "Yesterday",
       "workspace.reading_mode": "Reading mode",
   "workspace.live_preview": "Live preview",
+  "workspace.editing_mode": "Editing mode",
   "workspace.live_preview_hint": "Click to edit; move the cursor away to render. Ctrl / ⌘ + click to open links",
   "workspace.a_snapshot_is_saved_every_few_minutes_or_after_larger_edits": "A snapshot is saved every few minutes or after larger edits",
     "workspace.autosave_for_value0": "Autosave for “{value0}”",
