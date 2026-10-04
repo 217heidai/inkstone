@@ -89,7 +89,7 @@ export type UiDensity = 'comfortable' | 'compact'
 export type ProseFont = 'sans' | 'serif'
 export type ProseWidth = 'narrow' | 'normal' | 'wide' | 'full'
 export type EditorLayout = 'live' | 'split' | 'preview'
-export type BackupSchedule = 'off' | 'hourly' | 'sixHourly' | 'daily'
+export type BackupSchedule = 'off' | 'hourly' | 'sixHourly' | 'daily' | 'weekly' | 'monthly' | 'yearly'
 
 export interface AppearanceSettings {
   language: AppLocale
@@ -128,6 +128,7 @@ export interface PreviewSettings {
 
 export interface BackupSettings {
   schedule: BackupSchedule
+  retentionCount: number
 }
 
 export interface SyncSettings {
@@ -433,6 +434,7 @@ export interface BackupTargetResult {
   targetName: string
   targetType: BackupTargetType
   ok: boolean
+  warning?: string
   files: number
   bytes: number
   ms: number
